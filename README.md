@@ -12,7 +12,7 @@
 1. _Fibre Channel_ - доступ по SNMP
 1. _IBM PDU_ - доступ по SNMP
 1. _AMM_ - доступ по SNMP
-1. _Storwize_ - доступ по SSH
+1. _Storwize_ - доступ по SSH (достаточно прав с ролью Monitor)
 1. _TS4300 Tape Library_ - доступ по SNMP
 1. _APC PDU_ - доступ по SNMP
 
