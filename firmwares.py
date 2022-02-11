@@ -10,6 +10,7 @@
 # Storwize - доступ по SSH
 # TS4300 Tape Library - доступ по SNMP
 # APC PDU - доступ по SNMP
+# ESXi - доступ по SNMP
 
 from pysnmp.hlapi import *
 import json
@@ -22,36 +23,40 @@ import time
 
 # Необходимо выбрать филиал, с оборудованием которого скрипт будет работать.  
 # Список поддерживаемых филиалов можно получить, используя ссылку:
-# http://sv-applications.odusv.so/apex/firmwares/data/offices/
+# https://vs-assistant.oduvs.so/ords/firmwares/data/offices/
 # По этой ссылке в формате JSON будет выведен массив филиалов в виде [{"id":1,"office_name":"..."}..]
 # Необходимо правильно определить id своего филиала и указать его в переменной ниже:
-office_id = 2
+office_id = 21
 
 # Необходимо указать папку, в которой будут записываться логи
-filepath = "C:\script\logs"
+filepath = "C:\Scripts\logs"
 
 
 # !!! В этих переменных править ничего не надо !!!
 # Фиксируем время начала скрипта, это необходимо для файла логов
 timestamp = time.strftime("%Y%m%d-%H%M%S") 
 # URL для получения списка хостов филиала:
-url_hosts = 'http://sv-applications.odusv.so/apex/firmwares/data/hosts/?office_id=' + str(office_id)  
+url_hosts = 'https://vs-assistant.oduvs.so/ords/firmwares/data/hosts/' + str(office_id)
 # URL для отправки данных по IMMv2
-url_imm2 = 'http://sv-applications.odusv.so/apex/firmwares/data/imm2/' 
+url_imm2 = 'https://vs-assistant.oduvs.so/ords/firmwares/data/imm2/' 
 # URL для отправки данных по FibreChannel
-url_fc = 'http://sv-applications.odusv.so/apex/firmwares/data/fc/'  
+url_fc = 'https://vs-assistant.oduvs.so/ords/firmwares/data/fc/'  
 # URL для отправки данных по PDU IBM
-url_pdu = 'http://sv-applications.odusv.so/apex/firmwares/data/pdu/'  
+url_pdu = 'https://vs-assistant.oduvs.so/ords/firmwares/data/pdu/'  
 # URL для отправки данных по XCC
-url_xcc = 'http://sv-applications.odusv.so/apex/firmwares/data/xcc/'  
+url_xcc = 'https://vs-assistant.oduvs.so/ords/firmwares/data/xcc/'  
 # URL для отправки данных по AMM
-url_amm = 'http://sv-applications.odusv.so/apex/firmwares/data/amm/'  
+url_amm = 'https://vs-assistant.oduvs.so/ords/firmwares/data/amm/'  
 # URL для отправки данных по Storwize
-url_storwize = 'http://sv-applications.odusv.so/apex/firmwares/data/storwize/'  
+url_storwize = 'https://vs-assistant.oduvs.so/ords/firmwares/data/storwize/'  
 # URL для отправки данных по TAPE
-url_tape = 'http://sv-applications.odusv.so/apex/firmwares/data/tape/' 
+url_tape = 'https://vs-assistant.oduvs.so/ords/firmwares/data/tape/' 
 # URL для отправки данных по PDU APC
-url_pdu_apc = 'http://sv-applications.odusv.so/apex/firmwares/data/pdu_apc/'
+url_pdu_apc = 'https://vs-assistant.oduvs.so/ords/firmwares/data/pdu_apc/'
+# URL для отправки данных по ESXi
+url_esxi = 'https://vs-assistant.oduvs.so/ords/firmwares/data/esxi/'
+# URL для отправки данных по vCenter
+url_vCenter = 'https://vs-assistant.oduvs.so/ords/firmwares/data/vcenter/'
 
 
 # Скрипт активно использует библиотеку http://snmplabs.com/pysnmp для доступа по SNMP. 
@@ -108,6 +113,7 @@ def fn_immv2(ip, community):
 	uefibackup = ''
 	uefiactive = ''
 	dsa = ''
+	model = ''
 	errorIndication, errorStatus, errorIndex, varBinds = next(
 		getCmd(SnmpEngine(),
 			   CommunityData(community),
@@ -119,7 +125,8 @@ def fn_immv2(ip, community):
 			   ObjectType(ObjectIdentity(oid_immv2_uefiprimary)),
 			   ObjectType(ObjectIdentity(oid_immv2_uefibackup)),
 			   ObjectType(ObjectIdentity(oid_immv2_uefiactive)),
-			   ObjectType(ObjectIdentity(oid_immv2_dsa))
+			   ObjectType(ObjectIdentity(oid_immv2_dsa)),
+				ObjectType(ObjectIdentity(oid_immv2_model))
 			   ) 
 	)
 	if errorIndication:
@@ -135,9 +142,10 @@ def fn_immv2(ip, community):
 		name, uefibackup =  varBinds[4]
 		name, uefiactive =  varBinds[5]
 		name, dsa =  varBinds[6]
+		name, model = varBinds[7]
 
 	# Last function string:
-	return error, immprimary, immbackup, immactive, uefiprimary, uefibackup, uefiactive, dsa
+	return error, immprimary, immbackup, immactive, uefiprimary, uefibackup, uefiactive, dsa, model
 	
 def fn_xcc(ip, user):
 #----------------- XCC - wellknown OIDs -----------------------
@@ -148,6 +156,7 @@ def fn_xcc(ip, user):
 	oid_xcc_bmcbackup = "1.3.6.1.4.1.19046.11.1.1.5.1.1.3.3" 
 	oid_xcc_lxpmwindows = "1.3.6.1.4.1.19046.11.1.1.5.1.1.3.6" 
 	oid_xcc_lxpmlinux = "1.3.6.1.4.1.19046.11.1.1.5.1.1.3.7"
+	oid_xcc_model = ".1.3.6.1.4.1.19046.11.1.1.5.2.1.5.0"
 #----------------------------------------------------------------
 	error = ''							# Обнуляем рабочие переменные
 	bmcactive = ''						# Обнуляем рабочие переменные
@@ -157,6 +166,7 @@ def fn_xcc(ip, user):
 	bmcbackup = ''						# Обнуляем рабочие переменные
 	lxpmwindows = ''					# Обнуляем рабочие переменные
 	lxpmlinux = ''						# Обнуляем рабочие переменные
+	model = ''							# Обнуляем рабочие переменные
 	errorIndication, errorStatus, errorIndex, varBinds = next(
 		getCmd(SnmpEngine(),
 			   UsmUserData(user),       # Скрипт написан так, что поддерживает в настоящий момент вариант noAuth, noPriv. Необходимо только имя пользователя
@@ -168,7 +178,8 @@ def fn_xcc(ip, user):
 			   ObjectType(ObjectIdentity(oid_xcc_bmcprimary)),
 			   ObjectType(ObjectIdentity(oid_xcc_bmcbackup)),
 			   ObjectType(ObjectIdentity(oid_xcc_lxpmwindows)),
-			   ObjectType(ObjectIdentity(oid_xcc_lxpmlinux))
+			   ObjectType(ObjectIdentity(oid_xcc_lxpmlinux)),
+				ObjectType(ObjectIdentity(oid_xcc_model))
 			   ) 
 	)
 	if errorIndication:
@@ -181,9 +192,10 @@ def fn_xcc(ip, user):
 		name, bmcbackup =  varBinds[4]
 		name, lxpmwindows =  varBinds[5]
 		name, lxpmlinux =  varBinds[6]
+		name, model = varBinds[7]
 
 	# Last function string:
-	return error, bmcactive, bmcprimary, bmcbackup, uefi, lxpm, lxpmwindows, lxpmlinux			# Возвращаем данные из функции
+	return error, bmcactive, bmcprimary, bmcbackup, uefi, lxpm, lxpmwindows, lxpmlinux, model			# Возвращаем данные из функции
 
 def fn_fc(ip, community):
 #----------------- Fibre Channel - wellknown OIDs ---------------
@@ -259,16 +271,19 @@ def fn_pdu_apc(ip, community):
 
 def fn_tape(ip, community):
 #-------- IBM Tape Library - wellknown OIDs ---------------
-	oid_pdu = ".1.3.6.1.4.1.14851.3.1.3.4.0"
+	oid_tape = ".1.3.6.1.4.1.14851.3.1.3.4.0"
+	oid_model = ".1.3.6.1.4.1.2.6.211.1.1.0"
 #----------------------------------------------------------------
 	error = ''
 	firmware = ''
+	model = ''
 	errorIndication, errorStatus, errorIndex, varBinds = next(
 		getCmd(SnmpEngine(),
 			   CommunityData(community),
 			   UdpTransportTarget((ip, 161)),
 			   ContextData(),
-			   ObjectType(ObjectIdentity(oid_pdu))) 
+			   ObjectType(ObjectIdentity(oid_tape))
+			   )
 	)
 	if errorIndication:
 		error = errorIndication
@@ -331,6 +346,55 @@ def fn_storwize(ip, user, password):    # Функция для сбора да�
 	except Exception:           # Если было исключение при подключении к сторвайзу, то возвращаем пустую строку
 		return ''
 
+def fn_esxi(ip, community):
+#----------------- ESXi - wellknown OIDs ---------------
+	oid_version = ".1.3.6.1.4.1.6876.1.2.0"
+	oid_build = ".1.3.6.1.4.1.6876.1.4.0"
+#----------------------------------------------------------------
+	error = ''
+	version = ''
+	build = ''
+	errorIndication, errorStatus, errorIndex, varBinds = next(
+		getCmd(SnmpEngine(),
+			   CommunityData(community),
+			   UdpTransportTarget((ip, 161)),
+			   ContextData(),
+			   ObjectType(ObjectIdentity(oid_version)),
+			   ObjectType(ObjectIdentity(oid_build))
+			)
+	)
+	if errorIndication:
+		error = errorIndication
+	else:
+		name, version =  varBinds[0]
+		name, build =  varBinds[1]
+			
+	# Last function string:
+	return str(error), version, build
+
+
+def fn_vCenter(ip, community):
+	# ----------------- ESXi - wellknown OIDs ---------------
+	oid_version = ".1.3.6.1.4.1.6876.1.2.0"
+	# ----------------------------------------------------------------
+	error = ''
+	version = ''
+	errorIndication, errorStatus, errorIndex, varBinds = next(
+		getCmd(SnmpEngine(),
+			   CommunityData(community),
+			   UdpTransportTarget((ip, 161)),
+			   ContextData(),
+			   ObjectType(ObjectIdentity(oid_version))
+			   )
+	)
+	if errorIndication:
+		error = errorIndication
+	else:
+		name, version = varBinds[0]
+
+	# Last function string:
+	return str(error), version
+
 def logger(message):    # Функция для логирования событий
 	payload = ''     # Обнуляем рабочие переменные
 	url_log = 'http://sv-applications/apex/firmwares/data/log/' # URL для отправки логов на сервер
@@ -351,11 +415,11 @@ def logger(message):    # Функция для логирования собы�
 
 logger('Script started')										# Логируем действия
 
-response = requests.get(url_hosts) # Берем список всех хостов из БД
+response = requests.get(url_hosts, verify=False) # Берем список всех хостов из БД
 hosts = response.json() # Возвращает значение типа dict
 for host in hosts.get('items'): # Для каждого хоста собираем данные
 	logger("--------------------------------------------------")
-	logger("Processing host: " + host.get('hostname'));
+	logger("Processing host: " + str(host.get('hostname')));
 	
 	error = '' 					# Обнуляем рабочие переменные
 	imm1 = '' 					# Обнуляем рабочие переменные
@@ -382,10 +446,14 @@ for host in hosts.get('items'): # Для каждого хоста собира�
 	rev1 = ''                                       # Обнуляем рабочие переменные
 	build2 = ''                                     # Обнуляем рабочие переменные
 	rev2 = ''                                       # Обнуляем рабочие переменные
+	model = ''  									# Обнуляем рабочие переменные
 	
 	if host.get('host_type') == 'IMMv2':       # Если тип хоста IMMv2 тогда выполняем этот код
 		logger('Host type is IMMv2')
-		error, imm1, imm2, immactive, uefi1, uefi2, uefiactive, dsa = fn_immv2(host.get('ipaddress'),host.get('snmp_access_string')) # Сохраняем в переменные полученные по SNMP значения
+		try:
+			error, imm1, imm2, immactive, uefi1, uefi2, uefiactive, dsa, model = fn_immv2(host.get('ipaddress'),host.get('snmp_access_string')) # Сохраняем в переменные полученные по SNMP значения
+		except:
+			error = '!!! Exception !!!'
 		if error: # Если есть ошибки выполняем этот код
 			logger('Data received with errors: ' + str(error))
 		else: # Если данные по SNMP получены без ошибок выполняем этот код
@@ -398,12 +466,16 @@ for host in hosts.get('items'): # Для каждого хоста собира�
 						 "uefi_primary" : str(uefi1),
 						 "uefi_backup" : str(uefi2),
 						 "uefi_active" : str(uefiactive),
-						 "dsa" : str(dsa) 
+						 "dsa" : str(dsa),
+						"model": str(model)
 					   }
 	
 	if host.get('host_type') == 'XCC':       # Если тип хоста XCC тогда выполняем этот код
 		logger('Host type is XCC')
-		error, bmcactive, bmcprimary, bmcbackup, uefi, lxpm, lxpmwindows, lxpmlinux = fn_xcc(host.get('ipaddress'),host.get('snmp_access_string')) # Сохраняем в переменные полученные по SNMP значения
+		try:
+			error, bmcactive, bmcprimary, bmcbackup, uefi, lxpm, lxpmwindows, lxpmlinux, model = fn_xcc(host.get('ipaddress'),host.get('snmp_access_string')) # Сохраняем в переменные полученные по SNMP значения
+		except:
+			error = '!!! Exception !!!'
 		if error: # Если есть ошибки выполняем этот код
 			logger('Data received with errors: ' + str(error))
 		else: # Если данные по SNMP получены без ошибок выполняем этот код
@@ -416,12 +488,16 @@ for host in hosts.get('items'): # Для каждого хоста собира�
 						 "uefi" : str(uefi),
 						 "lxpm" : str(lxpm),
 						 "lxpmwindows" : str(lxpmwindows),
-						 "lxpmlinux" : str(lxpmlinux) 
-					   }
+						 "lxpmlinux" : str(lxpmlinux),
+						"model": str(model)
+						}
 					   
 	if host.get('host_type') == 'FC':       # Если тип хоста FibreChannel тогда выполняем этот код
 		logger('Host type is FC')
-		error, firmware = fn_fc(host.get('ipaddress'),host.get('snmp_access_string')) # Сохраняем в переменные полученные по SNMP значения
+		try:
+			error, firmware = fn_fc(host.get('ipaddress'),host.get('snmp_access_string')) # Сохраняем в переменные полученные по SNMP значения
+		except:
+			error = '!!! Exception !!!'
 		if error: # Если есть ошибки выполняем этот код
 			logger('Data received with errors: ' + str(error))
 		else: # Если данные по SNMP получены без ошибок выполняем этот код
@@ -433,7 +509,10 @@ for host in hosts.get('items'): # Для каждого хоста собира�
 	
 	if host.get('host_type') == 'PDU':       # Если тип хоста PDU тогда выполняем этот код
 		logger('Host type is PDU')
-		error, firmware = fn_pdu(host.get('ipaddress'),host.get('snmp_access_string')) # Сохраняем в переменные полученные по SNMP значения
+		try:
+			error, firmware = fn_pdu(host.get('ipaddress'),host.get('snmp_access_string')) # Сохраняем в переменные полученные по SNMP значения
+		except:
+			error = '!!! Exception !!!'
 		if error: # Если есть ошибки выполняем этот код
 			logger('Data received with errors: ' + str(error))
 		else: # Если данные по SNMP получены без ошибок выполняем этот код
@@ -445,7 +524,10 @@ for host in hosts.get('items'): # Для каждого хоста собира�
 	
 	if host.get('host_type') == 'PDU_APC':       # Если тип хоста PDU_APC тогда выполняем этот код
 		logger('Host type is PDU_APC')
-		error, rackpdu, apcos, bootmonitor = fn_pdu_apc(host.get('ipaddress'),host.get('snmp_access_string')) # Сохраняем в переменные полученные по SNMP значения
+		try:
+			error, rackpdu, apcos, bootmonitor = fn_pdu_apc(host.get('ipaddress'),host.get('snmp_access_string')) # Сохраняем в переменные полученные по SNMP значения
+		except:
+			error = '!!! Exception !!!'
 		if error: # Если есть ошибки выполняем этот код
 			logger('Data received with errors: ' + str(error))
 		else: # Если данные по SNMP получены без ошибок выполняем этот код
@@ -459,20 +541,26 @@ for host in hosts.get('items'): # Для каждого хоста собира�
 	
 	if host.get('host_type') == 'TAPE':       # Если тип хоста TAPE тогда выполняем этот код
 		logger('Host type is TAPE')
-		error, firmware = fn_tape(host.get('ipaddress'),host.get('snmp_access_string')) # Сохраняем в переменные полученные по SNMP значения
+		try:
+			error, firmware = fn_tape(host.get('ipaddress'),host.get('snmp_access_string')) # Сохраняем в переменные полученные по SNMP значения
+		except:
+			error = '!!! Exception !!!'
 		if error: # Если есть ошибки выполняем этот код
 			logger('Data received with errors: ' + str(error))
 		else: # Если данные по SNMP получены без ошибок выполняем этот код
 			logger('Data received successfully')
 			url = url_tape							 # сохраняем ссылку, на которую отправим данные
 			payload = { "host_id" : host.get('id'),  # Формируем данные, которые отправим по POST запросу в БД
-						 "firmware" : str(firmware)  # str - перевод к типу данных String 
+						 "firmware" : str(firmware)  # str - перевод к типу данных String
 					   }
         
 					   
 	if host.get('host_type') == 'AMM':       # Если тип хоста AMM тогда выполняем этот код
 		logger('Host type is AMM')
-		error, build1, rev1, build2, rev2 = fn_amm(host.get('ipaddress'),host.get('snmp_access_string')) # Сохраняем в переменные полученные по SNMP значения
+		try:
+			error, build1, rev1, build2, rev2 = fn_amm(host.get('ipaddress'),host.get('snmp_access_string')) # Сохраняем в переменные полученные по SNMP значения
+		except:
+			error = '!!! Exception !!!'
 		if error: # Если есть ошибки выполняем этот код
 			logger('Data received with errors: ' + str(error))
 		else: # Если данные по SNMP получены без ошибок выполняем этот код
@@ -487,18 +575,52 @@ for host in hosts.get('items'): # Для каждого хоста собира�
 
 	if host.get('host_type') == 'Storwize':         
 		logger("Host type is Storwize")
-		firmware = fn_storwize(host.get('ipaddress'),host.get('ssh_user'),host.get('ssh_pass'))
-		if firmware: 
+		try:
+			firmware = fn_storwize(host.get('ipaddress'),host.get('ssh_user'),host.get('ssh_pass'))
+		except:
+			error = '!!! Exception !!!'
+		if firmware:
 			logger('Data received')
 			url = url_storwize                       # сохраняем ссылку, на которую отправим данные
 			payload = { "host_id" : host.get('id'),  # Формируем данные, которые отправим по POST запросу в БД
 						 "firmware" : str(firmware)  # str - перевод к типу данных String 
 					   }
+
+	if host.get('host_type') == 'ESXi':         # Если тип хоста ESXi тогда выполняем этот код
+		logger("Host type is ESXi")
+		try:
+			error, version, build = fn_esxi(host.get('ipaddress'),host.get('snmp_access_string'))
+		except:
+			error = '!!! Exception !!!'
+		if error:  # Если есть ошибки выполняем этот код
+			logger('Data received with errors: ' + str(error))
+		else:  # Если данные по SNMP получены без ошибок выполняем этот код
+			logger('Data received successfully')
+			url = url_esxi  # сохраняем ссылку, на которую отправим данные
+			payload = {"host_id": host.get('id'),  # Формируем данные, которые отправим по POST запросу в БД
+					   "version": str(version),  # str - перевод к типу данных String
+					   "build": str(build)
+					   }
+
+	if host.get('host_type') == 'vCenter':         # Если тип хоста vCenter тогда выполняем этот код
+		logger("Host type is vCenter")
+		try:
+			error, version = fn_vCenter(host.get('ipaddress'),host.get('snmp_access_string'))
+		except:
+			error = '!!! Exception !!!'
+		if error:  # Если есть ошибки выполняем этот код
+			logger('Data received with errors: ' + str(error))
+		else:  # Если данные по SNMP получены без ошибок выполняем этот код
+			logger('Data received successfully')
+			url = url_vCenter  # сохраняем ссылку, на которую отправим данные
+			payload = {"host_id": host.get('id'),  # Формируем данные, которые отправим по POST запросу в БД
+					   "version": str(version)  # str - перевод к типу данных String)
+					   }
 					   
 	if payload and url:
 		logger('Payload: ' + str(payload))
 		logger('URL: ' + url)
-		result = requests.post(url, json=payload) # Отправляем данные
+		result = requests.post(url, json=payload, verify=False) # Отправляем данные
 		logger('HTTP response code: ' + str(result.status_code)) 	# код ответа при отправке данных в БД
 
 logger('----------------------------------------------')
